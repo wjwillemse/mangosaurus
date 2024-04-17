@@ -1,7 +1,7 @@
 ---
 title: "Introduction to SELMR"
-date: "2024-04-11"
-categories: ["NLP"]
+date: "2024-04-17"
+categories: ["natural language processing", "NLP", "explainability"]
 math: true
 ---
 
@@ -20,28 +20,47 @@ SELMRs produce explainable results without any randomness and enable explicit li
 with lexical, linguistical and terminological annotations. No model is trained and no
 dimensionality reduction is applied.
 
+# Simple model based on DBpedia pages
+
+The model used below is based on the plain text of 10.000 DBpedia pages (217 Mb), with
+phrase length of one to three words, and  left and right context length of also one to 
+three words. It and can be downloaded from here:
+
+* [dbpedia_1_10_p=3_lc=3_rc=3_lang=en.zip](https://mangosaurus.nl/models/dbpedia_1_10_p=3_lc=3_rc=3_lang=en.zip)
+
+Read the file with:
+
+```rust
+    use selmr::selmr::SELMR;
+    let mut s = SELMR::new();
+    s.read("dbpedia_1_10_p=3_lc=3_rc=3_lang=en.zip", "zip");
+```
+
 # Example: (multi-)word similarities
 
 Take for example the multi-word "has been suggested". The data structure based on the
-plain text data of 10.000 DBpedia pages (217 Mb) returns the following top ten most
-similar multi-words
+plain text data of 10.000 DBpedia pages returns the following top ten most similar
+multi-words
 
 ```rust
-use std::collections::HashMap;
-let actual = s.most_similar("has been suggested", 10).unwrap();
-let expected = HashMap::from([
-    ("has been suggested", 25.0),
-    ("has been argued", 12.0),
-    ("has been claimed", 11.0),
-    ("has been speculated", 11.0),
-    ("is probable", 11.0),
-    ("is speculated", 11.0),
-    ("is argued", 10.0),
-    ("is clear", 10.0),
-    ("is more likely", 10.0),
-    ("can be argued", 9.0)
-]);
-assert!(actual == expected)
+let actual = s.most_similar("has been suggested".to_string(), None, 15, 15, 10, "count").unwrap();
+println!("{:?}", actual);
+``` 
+
+This gives:
+```rust
+[
+    ("has been suggested", 15.0),
+    ("has been argued", 10.0),
+    ("has been speculated", 10.0),
+    ("is argued", 9.0),
+    ("has been proposed", 7.0),
+    ("is suggested", 7.0),
+    ("has been claimed", 7.0),
+    ("is clear", 7.0),
+    ("is probable", 7.0),
+    ("can be shown", 7.0)
+]
 ```
 
 This shows the multi-words with the number of contexts that they have in common with "has been
@@ -53,21 +72,24 @@ similarity measure.
 An example with the name "Aldous Huxley" which returns the following.
 
 ```rust
-use std::collections::HashMap;
-let actual = s.most_similar("Aldous Huxley", 10).unwrap();
-let expected = HashMap::from([
-    ("Aldous Huxley", 25.0),
-    ("Ben Bova", 9.0),
-    ("Frank Herbert", 9.0),
-    ("A E Housman", 8.0),
-    ("Anatole France", 8.0),
-    ("Apuleius", 8.0),
-    ("Blaise Pascal", 8.0),
-    ("Clark Ashton Smith", 8.0),
-    ("Fridtjof Nansen", 8.0),
-    ("Henri Bergson", 8.0)
-]);
-assert!(actual == expected)
+let actual = s.most_similar("Aldous Huxley".to_string(), None, 15, 15, 10, "count").unwrap();
+println!("{:?}", actual);
+``` 
+
+This gives:
+```rust
+[
+    ("Aldous Huxley", 15.0),
+    ("Ben Bova", 6.0),
+    ("Clark Ashton Smith", 5.0),
+    ("Apuleius", 5.0),
+    ("E E Smith", 5.0),
+    ("Blaise Pascal", 5.0),
+    ("L Frank Baum", 5.0),
+    ("A E Housman", 5.0),
+    ("Anatole France", 5.0),
+    ("Marcel Proust", 4.0)
+]
 ```
 
 The results are based on the common contexts with "Aldous Huxley". For example
@@ -89,7 +111,62 @@ So in this case similarities are found because DBpedia contains a bibliography o
 their work and (some of) their works are available on LibriVox, Open (Library) and
 Project (Gutenberg).
 
-# How does it work: multiset representations
+# Taking into account contexts
+
+Some words have multiple meanings. The different usages of a word can, to some extent,
+be derived from the contexts in which they are used. Take for example the word "deal"
+which is used as a noun and as a verb. By adding the context to the function call we
+can restrict the results to similar words that occur in the input context. We can
+restrict the output by providing the context "a ... with":
+
+```rust
+let actual = s.most_similar("deal", ("a", "with"), 10).unwrap();
+println!("{:?}", actual);
+``` 
+
+This gives:
+```rust
+[
+    ("deal", 25.0)
+    ("contract", 7.0),
+    ("treaty", 6.0),
+    ("dispute", 5.0), 
+    ("meeting", 4.0), 
+    ("close relationship", 4.0), 
+    ("peace treaty", 4.0),
+    ("problem", 4.0),
+    ("partnership", 4.0),
+    ("par", 3.0)
+]
+```
+
+Compare these results to the results when the context is "to ... with":
+
+```rust
+use std::collections::HashMap;
+let actual = s.most_similar("deal", ("to", "with"), 10).unwrap();
+println!("{:?}", actual);
+``` 
+
+This gives:
+```rust
+[
+    ("deal", 25.0), 
+    ("coincide", 5.0), 
+    ("come up", 5.0), 
+    ("interact", 5.0), 
+    ("cope", 5.0), 
+    ("experiment", 4.0), 
+    ("cooperate", 4.0), 
+    ("comply", 4.0), 
+    ("interfere", 4.0), 
+    ("communicate", 4.0)
+]
+```
+
+# How does it work
+
+## Multiset representations
 
 A multiset is a modification of a set that allows for multiple instances for
 each of its elements. It contains elements with their number of instances,
@@ -105,114 +182,53 @@ occurs with their number of occurrences. A context of a multi-word is a combinat
 words (the right side) of that multiword, with a certain maximum length and a certain
 minimum number of unique occurrences.
 
-```rust
-use std::collections::HashMap;
-let actual = s.get_contexts("has", 10).unwrap();
-let expected = HashMap::from([
-    ("It ... been", 1001),
-    ("it ... been", 991),
-    ("and ... been", 615),
-    ("which ... been", 493),
-    ("that ... been", 416),
-    ("also ... a", 401),
-    ("and ... a", 401),
-    ("there ... been", 401),
-    ("it ... a", 324),
-    ("which ... a", 318)
-]);
-assert!(actual == expected)
-```
-
-Below the 10 most common multi-words that fit in "it ... been" are listed.
-
-```rust
-use std::collections::HashMap;
-let actual = s.get_phrases(("it", "been"), 10).unwrap();
-let expected = HashMap::from([
-    ("has", 991),
-    ("had", 385),
-    ("may have", 83),
-    ("would have", 75),
-    ("has also", 59),
-    ("has not", 53),
-    ("might have", 25),
-    ("could have", 24),
-    ("not", 22),
-    ("had not", 21)
-]);
-assert!(actual == expected)
-```
-
 The most similar multi-words are found by looking at the number of common contexts
 of an input multi-word and another mult-word in the corpus. The multi-words that have
 the highest number of contexts in common are the most "similar" of the input multi-word.
 
-# Taking into account contexts
+## Similarity measures
 
-Some words have multiple meanings. The different usages of a word can, to some extent,
-be derived from the contexts in which they are used. Take for example the word "deal"
-which is used as a noun and as a verb. By adding the context to the function call we
-can restrict the results to similar words that occur in the input context. We can
-restrict the output by providing the context "a ... with":
+The measure can be
 
-```rust
-use std::collections::HashMap;
-let actual = s.most_similar("deal", ("a", "with"), 10).unwrap();
-let expected = HashMap::from([
-    ("deal", 25),
-    ("contract", 7),
-    ("treaty", 6),
-    ("dispute", 5),
-    ("close relationship", 4),
-    ("partnership", 4),
-    ("peace treaty", 4),
-    ("meeting", 4),
-    ("problem", 4),
-    ("collaboration", 3),
-]);
-assert!(actual == expected)
-```
-
-Compare these results to the results when the context is "to ... with":
-
-```rust
-use std::collections::HashMap;
-let actual = s.most_similar("deal", ("to", "with"), 10).unwrap();
-let expected = HashMap::from([
-    ("deal", 25),
-    ("cope", 5),
-    ("interact", 5),
-    ("coincide", 5),
-    ("come up", 5),
-    ("compete", 4),
-    ("comply", 4),
-    ("cooperate", 4),
-    ("communicate", 4),
-    ("experiment", 4)
-]);
-assert!(actual == expected)
-```
-
-# Most similar multi-words
-
-To find similar words, the Jaccard distance of the contexts of the input multi-words and the
-contexts of each multi-word in the corpus is calculated. The most similar multi-words of input
-multi-word $p$ are calculated with
+* count: a simple count of the common contexts of phrase $p1$ and $p2$:
 
 $$
-\displaystyle\max_{k \in \mathrm{\mathbf{P}}} 1 - J(\operatorname{Contexts}(k), \operatorname{Contexts}(p))
+\operatorname{count}(p1, p2) = | \operatorname{C}(p1) \cap \operatorname{C}(p2)|
+$$
+
+where $\operatorname{C}(p)$ is the set of contexts of multi-word $p$,
+
+
+* Jaccard index: the intersection of contexts divided by the union of contexts of two phrases
+
+$$
+\operatorname{jaccard}(p1, p2) = \frac{\operatorname{C}(p1) \cap \operatorname{C}(p2)}{\operatorname{C}(p1) \cup \operatorname{C}(p2)}
+$$
+
+* weighted Jaccard index: 
+
+$$
+\operatorname{weighted\_jaccard}(p1, p2) = \frac{\displaystyle\sum min(m_{\operatorname{C}(p1)}(c), m_{\operatorname{C}(p2)}(c))}{\displaystyle\sum max(m_{\operatorname{C}(p1)}(c), m_{\operatorname{C}(p2)}(c))}
+$$
+
+where $m_{C}(c)$ is the multiplicity (the number of occurrences) of $c$ in multiset $C$.
+
+The most similar words are calculated accordingly. For example To find the most similar words, 
+the Jaccard distance of the contexts of the input multi-words and the contexts of each multi-word 
+in the corpus is calculated. The most similar multi-words of input multi-word $p$ are calculated with
+
+$$
+\displaystyle\max_{k \in \mathrm{\mathbf{P}}} 1 - \operatorname{jaccard}(k, p)
 $$
 
 where
-- $\mathrm{\mathbf{P}}$ is the set of phrases that fits one of the contexts of multi-word $p$,
-- $\operatorname{Contexts}(k)$ is the set of contexts of multi-word $k$,
-- $J(A, B)$ is the Jaccard index of set $A$ and set $B$ (and $1 - J(A, B)$ is also called the Jaccard distance).
+- $\mathrm{\mathbf{P}}$ is the set of phrases that fits one of the contexts of multi-word $p$
 
 If an input context is also given then we restrict the phrases by replacing $\mathrm{\mathbf{P}}$ with
 $\operatorname{Phrases}(c)$, i.e. the phrases that fit into context $c$:
 
 $$
-\displaystyle\max_{k \in \operatorname{Phrases}(c)} 1 - J(\operatorname{Contexts}(k), \operatorname{Contexts}(p))
+\displaystyle\max_{k \in \operatorname{Phrases}(c)} 1 - \operatorname{jaccard}(k, p)
 $$
 
 where

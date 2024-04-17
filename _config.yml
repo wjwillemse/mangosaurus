@@ -47,9 +47,10 @@ google_site_verification: # fill in to your verification string
 google_analytics:
   id: # fill in your Google Analytics ID
 
-goatcounter:
-  id: # fill in your Goatcounter ID
-
+goatcounter: 
+  id: mangosaurus
+  pv:
+      enabled:
 # Prefer color scheme setting.
 #
 # Note: Keep empty will follow the system prefer color by default,
