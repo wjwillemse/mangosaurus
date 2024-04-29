@@ -45,7 +45,7 @@ multi-words
 ```rust
 let actual = s.most_similar("has been suggested".to_string(), None, 15, 15, 10, "count").unwrap();
 println!("{:?}", actual);
-``` 
+```
 
 This gives:
 ```rust
